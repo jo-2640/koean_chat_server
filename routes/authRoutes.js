@@ -84,7 +84,13 @@ if (!AZURE_ACCOUNT_NAME || !AZURE_ACCOUNT_KEY || !AZURE_CONTAINER_NAME) {
             return res.status(500).json({ success: false, message: 'SAS 토큰 발급 중 오류가 발생했습니다.' });
         }
     });
-
+    app.get('/test-connection', (req, res) => {
+    console.log("서버: /test-connection 요청을 받았습니다!");
+    res.status(200).json({
+        success: true,
+        message: "연결 성공!"
+    });
+});
     // Firestore에 토큰확인후 ,azure storage에 토큰을 받아서 프로필 이미지 업로드
     router.post('/signup/get-profile-sas-token-for-app', async (req, res) => {
         // 1. 요청 헤더에서 인증 토큰을 추출합니다.
