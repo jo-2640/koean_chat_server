@@ -85,6 +85,66 @@ if (!AZURE_ACCOUNT_NAME || !AZURE_ACCOUNT_KEY || !AZURE_CONTAINER_NAME) {
         }
     });
 
+    // Firestore에 토큰확인후 ,azure storage에 토큰을 받아서 프로필 이미지 업로드
+    router.post('/signup/get-profile-sas-token-for-app', async (req, res) => {
+        // 1. 요청 헤더에서 인증 토큰을 추출합니다.
+        const idToken = req.headers.authorization?.split('Bearer ')[1];
+        if (!idToken) {
+            return res.status(401).json({ success: false, message: '인증 토큰이 누락되었습니다.' });
+        }
+
+        try {
+            // 2. Firebase Admin SDK로 토큰을 검증합니다.
+            const decodedToken = await admin.auth().verifyIdToken(idToken);
+            const requestUid = decodedToken.uid;
+
+            // 3. 클라이언트가 보낸 uid와 토큰의 uid가 일치하는지 확인합니다.
+            const { uid, blobPath } = req.body;
+            if (requestUid !== uid) {
+                console.warn(`서버: 토큰 UID 불일치 - 토큰: ${requestUid}, 요청: ${uid}`);
+                return res.status(403).json({ success: false, message: '토큰 UID와 요청 UID가 일치하지 않습니다.' });
+            }
+            
+            if (!uid || !blobPath) {
+                return res.status(400).json({ success: false, message: 'UID와 파일명이 필요합니다.' });
+            }
+            
+            // 4. Azure Storage SDK를 사용하여 SAS 토큰을 생성합니다.
+            const sharedKeyCredential = new StorageSharedKeyCredential(AZURE_ACCOUNT_NAME, AZURE_ACCOUNT_KEY);
+            const blobServiceClient = new BlobServiceClient(
+                `https://${AZURE_ACCOUNT_NAME}.blob.core.windows.net`,
+                sharedKeyCredential
+            );
+            const containerClient = blobServiceClient.getContainerClient(AZURE_CONTAINER_NAME);
+
+            const writeSasOptions = {
+                containerName: AZURE_CONTAINER_NAME,
+                blobName: blobPath,
+                permissions: BlobSASPermissions.from({ create: true, write: true }),
+                expiresOn: new Date(new Date().valueOf() + 300 * 1000) // 5분
+            };
+            const writeSasToken = generateBlobSASQueryParameters(writeSasOptions, sharedKeyCredential).toString();
+            
+            const blobUrl = containerClient.getBlobClient(blobPath).url;
+
+            console.log(`서버: UID ${uid}에 대한 SAS 토큰 발급 성공`);
+            
+            // 5. 생성된 정보를 클라이언트에 응답합니다.
+            return res.status(200).json({
+                success: true,
+                message: 'SAS 토큰이 성공적으로 발급되었습니다.',
+                writeSasToken: writeSasToken,
+                blobUrl: blobUrl
+            });
+
+        } catch (error) {
+            console.error("서버: SAS 토큰 발급 중 오류 발생:", error);
+            if (error.code === 'auth/id-token-expired' || error.code === 'auth/argument-error') {
+                return res.status(401).json({ success: false, message: '인증 토큰이 유효하지 않습니다.' });
+            }
+            return res.status(500).json({ success: false, message: 'SAS 토큰 발급 중 오류가 발생했습니다.' });
+        }
+});
     // 3. Firestore에 최종 정보 저장 라우터
     router.post('/signup/finalize-all', async (req, res) => {
         try {
