@@ -1,0 +1,32 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.env # 환경 변수 파일은 반드시 Git에 포함시키면 안 됩니다!
+localhost.env
+# Build outputs
+dist/
+build/
+FIREBASE_ADMIN_CREDENTIALS.json
+
+# Vite specific (프론트엔드 프로젝트용이지만, 혹시 백엔드에서 빌드 관련 폴더가 생성될 수도 있으니 포함)
+.vite/
+*.local
+
+# Editor directories and files
+.idea/ # IntelliJ IDEA, WebStorm 등 JetBrains IDE
+.vscode/ # Visual Studio Code 설정 폴더
+.history/ # VS Code Local History
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+.DS_Store # macOS에서 생성되는 폴더 메타데이터 파일
+Thumbs.db # Windows에서 생성되는 썸네일 캐시 파일
+
+# Google Cloud Service Account Credentials
+backend/config/simplechat.json
+deploy.env
+.env
