@@ -30,11 +30,11 @@ const ChatRoomSchema =  new mongoose.Schema({
     },
     //마지막 메세지 전송 시간
     lastMessageTimestamp:{
-        type: Data,
+        type: Date,
         default: Date.now
     }
 }, {
      timestamps: true
 });
 
-module.exports = mongoose.mode('ChatRoom' , ChatRoomSchema);
+module.exports = mongoose.model('ChatRoom' , ChatRoomSchema);
