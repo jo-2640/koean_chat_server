@@ -47,7 +47,12 @@ app.use('/api', storageRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', userInfoRoutes);
 
-
+app.get('/ping', (req, res) => {
+    // 200 OK 상태 코드와 함께 간단한 텍스트 응답을 보냅니다.
+    // Send a simple text response with a 200 OK status code.
+    console.log('핑 요청을 받았습니다. OK 응답을 보냅니다.');
+    res.status(200).send('OK');
+});
 // ----------------------------------------------------
 // 6. Socket.IO 설정 및 이벤트 핸들러
 // ----------------------------------------------------
