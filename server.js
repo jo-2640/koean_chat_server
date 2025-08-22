@@ -25,6 +25,7 @@ const storageRoutes = require('./routes/storageRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const userInfoRoutes = require('./routes/userInfoRoutes');
 const configureSocketHandlers = require('./socket/socket_handler');
+const chatRoutes = require('./routes/chatRoutes');
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -46,7 +47,7 @@ app.use('/api', userRoutes);
 app.use('/api', storageRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', userInfoRoutes);
-
+app.use('/api', chatRoutes);
 app.get('/ping', (req, res) => {
     // 200 OK 상태 코드와 함께 간단한 텍스트 응답을 보냅니다.
     // Send a simple text response with a 200 OK status code.
