@@ -6,86 +6,117 @@ const { getAuth } = require('firebase-admin/auth');
 const userIdToSocketId = new Map();
 
 // 모든 소켓 이벤트 핸들러를 관리하는 함수
-const configureSocketHandlers = (io) => {
-
-    // ✅ 소켓 인증 미들웨어: 모든 연결 시 토큰을 검증합니다.
-    io.use(async (socket, next) => {
-        const token = socket.handshake.auth.token;
-
-        if (!token) {
-            console.error('[Socket Auth] 인증 토큰이 없습니다. 연결 거부.');
-            return next(new Error('인증 토큰이 없습니다.'));
-        }
-
-        try {
-            const decodedToken = await getAuth().verifyIdToken(token);
-            socket.user = { userId: decodedToken.uid, username: decodedToken.name || decodedToken.email };
-            next();
-        } catch (error) {
-            console.error('[Socket Auth] 토큰 검증 실패:', error.message);
-            next(new Error('유효하지 않은 토큰입니다.'));
-        }
-    });
+const configureSocketHandlers = (io, app) => {
 
     // ✅ 주요 소켓 이벤트 핸들러: 인증된 사용자만 처리합니다.
     io.on('connection', (socket) => {
-        const userId = socket.user.userId;
+        // ⭐ 핵심 수정 (1): socket.user가 존재하는지 먼저 확인
+        if (!socket.user) {
+            console.error("[오류] 인증되지 않은 소켓이 연결을 시도했습니다. 연결을 종료합니다.");
+            socket.disconnect(true);
+            return;
+        }
+        const userId = socket.user.uid; // 먼저 선언
         userIdToSocketId.set(userId, socket.id);
-        console.log(`[Socket] ${socket.user.username} (ID: ${userId}) 님이 접속했습니다.`);
+        // 앱 전역에도 등록
+        app.set('users', Object.fromEntries(userIdToSocketId));
+        console.log(`[Socket] ${socket.user?.email} (ID: ${socket.user?.uid}) 접속 시도`);
+        console.log('현재 userIdToSocketId 맵:');
+        console.log(userIdToSocketId);
+        console.log(`[Socket] ${socket.user.email} (ID: ${userId}) 님이 접속했습니다. 소켓 ID: ${socket.id}`);
+
+        // 전체 맵 확인
+        console.log('현재 userIdToSocketId 맵:');
+        for (const [k, v] of userIdToSocketId.entries()) {
+            console.log('userId:', k, 'socketId:', v);
+        }
 
         // ❌ 에러 처리 추가: 잘못된 이벤트 수신
         socket.on('error', (error) => {
-            console.error(`[Socket Error] ${socket.user.username}의 소켓 오류:`, error);
+            console.error(`[Socket Error] ${userId}의 소켓 오류:`, error);
         });
 
         // ----------------------------------------------------
         // ✅ 소켓 이벤트: joinRoom, chat message 등
         // ----------------------------------------------------
-        socket.on('joinRoom', (data) => {
-            // 🚨 에러 처리: roomId가 누락된 경우
+        socket.on('joinRoom', (data, ack) => {
             if (!data.roomId) {
                 console.error(`[오류] 잘못된 'joinRoom' 요청: roomId가 누락되었습니다.`, data);
-                socket.emit('error', { message: `'joinRoom' 요청에 roomId가 누락되었습니다.` });
+                if (ack) ack({ status: 'error', message: 'roomId missing' });
                 return;
             }
             socket.join(data.roomId);
-            console.log(`[Socket] ${socket.user.username}가 방 ${data.roomId}에 참여했습니다.`);
+            console.log(`[Socket] ${socket.user.uid}가 방 ${data.roomId}에 참여했습니다.`);
+            if (ack) {
+                ack({ status: 'ok', messageId: data.messageId });
+                console.log(`[서버] 클라이언트에게 ACK 전송: ID ${data.messageId}`);
+            }
         });
 
-        socket.on('chat message', (data) => {
-            // 🚨 에러 처리: 필수 필드 누락
-            // 🚨 에러 처리: 필수 필드 누락
-            if (!data.roomId || !data.message || !data.senderId) {
-                console.error(`[오류] 잘못된 'chat message' 데이터: 필수 필드 누락`, data);
-                socket.emit('error', { message: '잘못된 형식의 메시지입니다.' });
-                return;
+       // D:\volcano_chat\backend\socket\socket_handler.js
+
+// ✅ `socket.on('chat message', (data, callback) => { ... })`
+//    와 같이 클라이언트가 보낸 데이터가 `data` 인자로 전달됩니다.
+        socket.on('chat message', (data, callback) => {
+        try {
+            const { roomId, message, senderId, messageId } = data;
+
+            // 1. 필수 데이터 유효성 검사
+            if (!roomId || !message || !senderId || !messageId) {
+            console.warn(`⚠️ [서버] 유효하지 않은 메시지 데이터 수신: ${JSON.stringify(data)}`);
+             // 유효성 검사를 더 구체적으로 작성
+  if (!roomId) {
+    return callback({ status: 'error', message: 'Missing chatRoomId' });
+  }
+  if (!message) {
+    return callback({ status: 'error', message: 'Missing text' });
+  }
+  if (!senderId) {
+    return callback({ status: 'error', message: 'Missing senderId' });
+  }
+  if (!messageId) {
+    return callback({ status: 'error', message: 'Missing messageId' });
+  }
+            if (typeof callback === 'function') {
+                callback({ status: 'error', message: 'Invalid message data.' });
+            }
+            return;
             }
 
-            // ⭐⭐ 서버 로그 추가 (1): 메시지 수신 확인 ⭐⭐
-            console.log(`[서버] 'chat message' 이벤트 수신: ${JSON.stringify(data)}`);
+            console.log(`➡️ [서버] 메시지 수신 (ID: ${messageId})`);
 
-            // ⭐⭐ 서버 로그 추가 (2): 방의 소켓 수 확인 ⭐⭐
-            const room = io.sockets.adapter.rooms.get(data.roomId);
-            const numSocketsInRoom = room ? room.size : 0;
-            console.log(`[서버] 방 ${data.roomId}에 현재 ${numSocketsInRoom}개의 소켓이 있습니다.`);
+            // 2. 메시지 브로드캐스트
+            io.to(roomId).emit('chat message', {
+            messageId,
+            message,
+            senderId,
+            });
+            console.log(`✅ [서버] 방 ${roomId}에 메시지 브로드캐스트. ID: ${messageId}`);
 
-            // 메시지를 방 전체에 브로드캐스트
-            io.to(data.roomId).emit('chat message', data);
-
-            // ⭐⭐ 서버 로그 추가 (3): 브로드캐스트 완료 확인 ⭐⭐
-            console.log(`[서버] 메시지를 방 ${data.roomId}에 브로드캐스트했습니다.`);
-
-            // ⭐ 서버 에러 로그: 상대방이 방에 없을 때
-            const recipientId = getRecipientId(data.roomId, data.senderId);
-            const recipientSocket = io.sockets.sockets.get(userIdToSocketId.get(recipientId));
-            if (recipientSocket && !recipientSocket.rooms.has(data.roomId)) {
-                console.log(`[알림 전송] ${socket.user.username} -> ${recipientId}: 방에 없는 상대방에게 알림 전송`);
+            // 3. 클라이언트에 ACK 전송
+            if (typeof callback === 'function') {
+            callback({ status: 'ok', message: '메시지가 성공적으로 처리되었습니다.' });
             }
+        } catch (error) {
+            console.error('💔 [서버] 채팅 메시지 처리 중 오류 발생:', error);
+            if (typeof callback === 'function') {
+            callback({ status: 'error', message: 'Server error occurred.' });
+            }
+        }
         });
 
         socket.on('disconnect', () => {
-            userIdToSocketId.delete(userId);
-            console.log(`[Socket] ${socket.user.username} 님이 접속을 종료했습니다.`);
+            // ⭐ 핵심 수정 (4): socket.user가 존재할 때만 userIdToSocketId에서 삭제하고 로그 출력
+            if (socket.user) {
+                userIdToSocketId.delete(userId);
+                app.set('users', Object.fromEntries(userIdToSocketId));
+                console.log(`[Socket] ${socket.user.email} (ID: ${socket.user.uid}) 님이 접속을 종료했습니다.`);
+            } else {
+                console.log(`[Socket] 인증되지 않은 사용자가 접속을 종료했습니다.`);
+            }
+            console.log(`[Socket] ${socket.user?.email || '알 수 없음'} 접속 종료`);
+            console.log('현재 userIdToSocketId 맵:');
+            console.log(userIdToSocketId);
         });
     });
 };
@@ -97,4 +128,4 @@ const getRecipientId = (roomId, senderId) => {
 };
 
 // 모듈로 내보내기
-module.exports = configureSocketHandlers;
+module.exports = { configureSocketHandlers, userIdToSocketId };

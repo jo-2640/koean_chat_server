@@ -11,7 +11,7 @@ const {
 const { db } = require('../config/firebaseAdmin');
 const { getDefaultProfileImageUrl } = require('../config/defaultImages');
 
-/*router.post('/getBlobSasToken', async (req, res) => {
+router.post('/getBlobSasToken', async (req, res) => {
     console.log("SAS 토큰 생성 요청 받음, 요청 본문:", req.body);
     try {
         const { filename, contentType } = req.body;
@@ -45,7 +45,7 @@ const { getDefaultProfileImageUrl } = require('../config/defaultImages');
         console.error('SAS 토큰 생성 오류:', error);
         res.status(500).json({ success: false, message: 'SAS 토큰 생성에 실패했습니다.', error: error.message });
     }
-});*/
+});
 
 router.post('/getProfileImageUrl', async (req, res) => {
     console.log("백엔드: 프로필 이미지 url 요청받음, 요청 본문:", req.body);
@@ -142,6 +142,12 @@ router.post('/getProfileImageUrl', async (req, res) => {
         console.error('백엔드: 프로필 이미지 URL 가져오기 오류:', error);
         res.status(500).json({ success: false, message: '프로필 이미지 URL을 가져오지 못했습니다.', error: error.message });
     }
+});
+
+router.post('/getBlobSasTokenForDelete', async (req, res) => {
+    console.log("백엔드: 프로필 이미지 url 요청받음, 요청 본문:", req.body);
+    const { userId, requestorUid } = req.body;
+   
 });
 
 module.exports = router;

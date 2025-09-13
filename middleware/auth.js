@@ -12,6 +12,7 @@ const isAuthenticated = async (req, res, next) => {
     try {
         const decodedToken = await getAuth().verifyIdToken(idToken);
         req.user = decodedToken;
+        console.log('💡 토큰 미들웨어 인증 성공, uid:', decodedToken.uid);
         next();
     } catch (error) {
         console.error('토큰 검증 오류:', error);
