@@ -63,24 +63,24 @@ const configureSocketHandlers = (io, app) => {
 
             // 1. 필수 데이터 유효성 검사
             if (!roomId || !message || !senderId || !messageId) {
-            console.warn(`⚠️ [서버] 유효하지 않은 메시지 데이터 수신: ${JSON.stringify(data)}`);
-             // 유효성 검사를 더 구체적으로 작성
-  if (!roomId) {
-    return callback({ status: 'error', message: 'Missing chatRoomId' });
-  }
-  if (!message) {
-    return callback({ status: 'error', message: 'Missing text' });
-  }
-  if (!senderId) {
-    return callback({ status: 'error', message: 'Missing senderId' });
-  }
-  if (!messageId) {
-    return callback({ status: 'error', message: 'Missing messageId' });
-  }
-            if (typeof callback === 'function') {
+                console.warn(`⚠️ [서버] 유효하지 않은 메시지 데이터 수신: ${JSON.stringify(data)}`);
+            // 유효성 검사를 더 구체적으로 작성
+                if (!roomId) {
+                return callback({ status: 'error', message: 'Missing chatRoomId' });
+            }
+                if (!message) {
+                return callback({ status: 'error', message: 'Missing text' });
+            }
+               if (!senderId) {
+               return callback({ status: 'error', message: 'Missing senderId' });
+            }
+               if (!messageId) {
+               return callback({ status: 'error', message: 'Missing messageId' });
+            }
+                if (typeof callback === 'function') {
                 callback({ status: 'error', message: 'Invalid message data.' });
             }
-            return;
+                return;
             }
 
             console.log(`➡️ [서버] 메시지 수신 (ID: ${messageId})`);

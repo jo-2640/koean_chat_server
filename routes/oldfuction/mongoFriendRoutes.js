@@ -70,6 +70,7 @@ router.get('/friendShip', isAuthenticated, async (req, res) => {
 });
 
 // 라우터 파일에서 이 함수를 연결
+// router.get('/friends', authMiddleware, getFriends);
 router.get('/friends', isAuthenticated, async (req, res) => {
     console.log('💚 친구 목록 요청 도착');
     const userId = req.user.uid;
@@ -113,18 +114,7 @@ router.get('/friends', isAuthenticated, async (req, res) => {
         senderId: doc.senderId,
         recipientId: doc.recipientId,
         isRead: false, // You might need to adjust this depending on your logic
-        type: (() => {
-            switch(doc.status) {
-                case 'pending':
-                    return 'friend_request';
-                case 'blocked':
-                    return 'friend_blocked';
-                case 'accepted':
-                    return 'friend_accepted';
-                default:
-                    return 'friend_status_update';
-            }
-        })(),
+        type: doc.status === 'pending' ? 'friend_request' : 'friend_status_update', 
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
     }));
@@ -331,7 +321,6 @@ router.get('/notifications', isAuthenticated, async (req, res) => {
             isRead: false
         })
         .lean()
-        .populate('recipientId', userFullProfileFields).sort({ createAt: -1})
         .populate('senderId', userFullProfileFields).sort({ createdAt: -1 }); // ✅ populate 유지
 
         console.log(`✅ 서버가 클라이언트에게 보내는 알림 데이터:`, JSON.stringify(notifications, null, 2));
@@ -551,7 +540,7 @@ router.post('/friends/remove', isAuthenticated, async (req, res) => {
     
 });
 
-router.post('/friends/block', isAuthenticated, async (req, res) => {
+router.post('/friends/blocked', isAuthenticated, async (req, res) => {
     console.log('💚 친구 차단 요청 도착');
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -579,7 +568,7 @@ router.post('/friends/block', isAuthenticated, async (req, res) => {
             // ✅ STEP 2a: 기존 문서가 있다면, 해당 문서의 상태를 'blocked'로 업데이트합니다.
             friendShip = await Friendship.findOneAndUpdate(
                 { _id: existingFriendship._id },
-                {  senderId: senderId, recipientId: recipientId , status: 'blocked' },
+                { status: 'blocked' },
                 { new: true, session }
             );
         } else {
@@ -594,15 +583,13 @@ router.post('/friends/block', isAuthenticated, async (req, res) => {
 
         console.log(`💚 Friendship 처리 완료: _id=${friendShip._id}, status=${friendShip.status}`);
 
-         const friendId = friendShip.senderId === currentUserId ? friendShip.recipientId : friendShip.senderId;
-
         // 나머지 코드는 동일하게 알림 문서를 업데이트하고 소켓으로 전송합니다.
         const notification = await Notification.findOneAndUpdate(
             { friendShipDocId: friendShip._id },
             {
                 $set: {
-                    recipientId: friendId,
-                    senderId: currentUserId,
+                    recipientId: friendShip.recipientId,
+                    senderId: friendShip.senderId,
                     status: 'blocked',
                     isRead: false,
                     type: 'friend_blocked',
@@ -640,78 +627,6 @@ router.post('/friends/block', isAuthenticated, async (req, res) => {
         res.status(500).json({ message: '서버 오류가 발생했습니다.' });
     }
 });
-//unblock~ remove와 똑같은 api
-router.post('/friends/unblock', isAuthenticated, async (req, res) => {
-    console.log('💚 친구 차단 해제 요청 도착');
-    const session = await mongoose.startSession();
-    session.startTransaction();
-    try {
-        const { friendShipDocId } = req.body;
-        console.log('🔵 받은 friendShipDocId:', friendShipDocId); // ✅ 1. ID 값 확인
-        const currentUserId = req.user.uid;
 
-        // 1. 친구 상태를 'removed'로 변경
-        const friendShip = await Friendship.findOneAndUpdate(
-            { _id: friendShipDocId, $or: [{ senderId: currentUserId }, { recipientId: currentUserId }], status: 'blocked' },
-            { status: 'removed' },
-            { new: true, session }
-        );
-        
-        console.log('✅ 1. friendShip update 결과:', friendShip); // ✅ 2. 업데이트 결과 확인
-
-        if (!friendShip) {
-            await session.abortTransaction();
-            session.endSession();
-            return res.status(404).json({ message: '해당 친구 관계를 찾을 수 없거나 이미 삭제되었습니다.' });
-        }
-
-        // 2. 상대방 ID 확인
-        const friendId = friendShip.senderId === currentUserId ? friendShip.recipientId : friendShip.senderId;
-
-        // 3. Notification 상태 업데이트
-        const notification = await Notification.findOneAndUpdate(
-            { friendShipDocId: friendShip._id, type: 'friend_blocked' },
-            { $set:
-                { 
-                  senderId: currentUserId,
-                  recipientId: friendId,
-                  status: 'removed', 
-                  type: 'friend_removed', 
-                  isRead: true 
-                }
-            },
-            { new: true, session }
-        )
-        .lean()
-        .populate('recipientId', userFullProfileFields)
-        .populate('senderId', userFullProfileFields);
-        
-        console.log('✅ 2. notification update 결과:', notification); // ✅ 3. 알림 업데이트 결과 확인
-
-        // 4. 실시간 알림 전송
-        const io = req.app.get('io');
-        const users = req.app.get('users');
-        const friendSocketId = users?.[friendId];
-
-        if (io && friendSocketId) {
-            io.to(friendSocketId).emit('friend_unblocked', notification);
-            console.log(`✅ 친구 차단해제 실시간 알림을 ${friendId}에게 보냈습니다.`);
-        }
-
-        await session.commitTransaction();
-        session.endSession();
-
-        console.log('✅ 친구 차단해제  성공');
-        res.status(200).json(notification);
-
-    } catch (err) {
-        await session.abortTransaction();
-        session.endSession();
-        console.error('💔 친구 차단해제 중 오류:', err);
-        console.error('--- 오류 상세 정보:', err.stack); // ✅ 4. 상세한 오류 스택을 기록합니다.
-        res.status(500).json({ message: '서버 오류가 발생했습니다.' });
-    }
-    
-});
 
 module.exports = router;

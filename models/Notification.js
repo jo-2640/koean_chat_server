@@ -15,6 +15,12 @@ const notificationSchema = new mongoose.Schema({
     required: true,
     ref: 'User'
   },
+  // 클라이언트의 ui를 빠르게 처리하게위해 상대 정보를 찾아서 보내준다.
+  otherId: {
+    type: String,
+    required: true,
+    ref: 'User'
+  },
   // 알림 유형 (예: 'friend_request',  'chat_message')
    type: {
     type: String,
